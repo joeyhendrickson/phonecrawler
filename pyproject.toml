@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phone-inventory"
+version = "0.1.0"
+description = "Deterministic public-website crawler that inventories published phone numbers."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Phone Inventory" }]
+dependencies = [
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "playwright>=1.40",
+    "phonenumbers>=8.13",
+    "pymupdf>=1.24",
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+    "tenacity>=8.2",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "tldextract>=5.1",
+    "structlog>=24.1",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+phone-inventory = "app.main:cli"
+phone-crawler = "app.web.server:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.web" = ["templates/*", "static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

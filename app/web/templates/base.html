@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Phone Crawler{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ['Fraunces', 'Georgia', 'serif'],
+              sans: ['IBM Plex Sans', 'ui-sans-serif', 'system-ui'],
+              mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
+            },
+            colors: {
+              ink: { DEFAULT: '#12263a', muted: '#4a5c6c', faint: '#8a97a3' },
+              paper: { DEFAULT: '#f4efe6', card: '#fffdf8', rule: '#e0d6c8' },
+              tide: { DEFAULT: '#0f766e', dark: '#115e59', faint: '#ccfbf1' },
+              rust: { DEFAULT: '#b45309', faint: '#fff7ed' },
+            },
+            boxShadow: {
+              card: '0 1px 2px rgba(18,38,58,0.06), 0 12px 32px rgba(18,38,58,0.06)',
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body { background-color: #f4efe6; background-image: radial-gradient(#d9d0c2 0.6px, transparent 0.6px); background-size: 14px 14px; }
+    </style>
+  </head>
+  <body class="min-h-full text-ink font-sans antialiased">
+    <header class="border-b border-paper-rule bg-paper-card/90 backdrop-blur">
+      <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <a href="/" class="flex items-center gap-3">
+          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-ink text-paper-card">
+            <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M7 3h10a2 2 0 0 1 2 2v14l-7-3-7 3V5a2 2 0 0 1 2-2Z" />
+              <path d="M9 8h6M9 12h4" />
+            </svg>
+          </span>
+          <span>
+            <span class="block font-display text-xl tracking-tight">Phone Crawler</span>
+            <span class="block text-xs uppercase tracking-[0.18em] text-ink-faint">Public inventory</span>
+          </span>
+        </a>
+        <nav class="flex items-center gap-4 text-sm text-ink-muted">
+          <span class="hidden rounded-full border border-paper-rule px-3 py-1 font-mono text-[11px] sm:inline">PublicPhoneInventoryBot/1.0</span>
+          <a href="/" class="hover:text-ink">New crawl</a>
+        </nav>
+      </div>
+    </header>
+    <main class="mx-auto max-w-7xl px-6 py-8">{% block content %}{% endblock %}</main>
+  </body>
+</html>
