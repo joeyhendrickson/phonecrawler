@@ -3,12 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from app.config import DEFAULT_EXCLUDE_PATTERNS, CrawlConfig
+from app.config import DEFAULT_EXCLUDE_PATTERNS, CrawlConfig, default_output_dir
 from app.crawler.crawler import PhoneCrawler
 from app.exporters.csv_exporter import export_csvs
 from app.exporters.excel_exporter import export_excel
@@ -98,16 +97,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--debug", action="store_true", help="Verbose debug logging")
     return parser
-
-
-def default_output_dir(start_url: str) -> Path:
-    from urllib.parse import urlparse
-
-    from app.crawler.url_normalizer import ensure_scheme
-
-    host = urlparse(ensure_scheme(start_url)).hostname or "site"
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path("output") / f"{host}_{stamp}"
 
 
 def config_from_args(args: argparse.Namespace) -> CrawlConfig:

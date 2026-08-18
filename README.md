@@ -77,6 +77,8 @@ python -m app.web
 
 The UI can start a crawl, stream tagged progress, and browse unique numbers, occurrences, coverage, and errors. Exports remain CSV/Excel in `output/`.
 
+The GitHub homepage `https://phonecrawler.vercel.app` is a hosted preview of the dashboard. Actual crawls still need a local process because Vercel functions cannot run a long public crawl.
+
 ## Advanced usage
 
 ```bash

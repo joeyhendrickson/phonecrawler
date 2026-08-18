@@ -24,3 +24,11 @@ def test_home_renders_tailwind_shell():
 def test_start_url_is_required():
     response = client.post("/api/crawls", json={"start_url": ""})
     assert response.status_code == 422
+
+
+def test_hosted_preview_rejects_crawls(monkeypatch):
+    import app.web.server as web
+
+    monkeypatch.setattr(web, "HOSTED_PREVIEW", True)
+    response = client.post("/api/crawls", json={"start_url": "https://www.example.edu"})
+    assert response.status_code == 501

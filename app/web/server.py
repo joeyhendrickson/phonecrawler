@@ -2,25 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
-from app.config import DEFAULT_EXCLUDE_PATTERNS, CrawlConfig
-from app.exporters.summary import summary_rows
-from app.main import default_output_dir, run_inventory
+from app.config import DEFAULT_EXCLUDE_PATTERNS, CrawlConfig, default_output_dir
 from app.utils.logging import progress_callback
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_ROOT = Path("output")
 TEMPLATES = Jinja2Templates(directory=str(ROOT / "templates"))
+HOSTED_PREVIEW = bool(os.getenv("VERCEL"))
 
 app = FastAPI(title="Phone Crawler", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
@@ -67,6 +66,10 @@ jobs: dict[str, Job] = {}
 _jobs_lock = asyncio.Lock()
 
 
+def _page_vars(**kwargs: Any) -> dict[str, Any]:
+    return {"hosted_preview": HOSTED_PREVIEW, **kwargs}
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -86,6 +89,10 @@ def _safe_output(path: Path) -> Path:
 def _read_csv(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
+    try:
+        import pandas as pd
+    except ImportError:
+        return []
     frame = pd.read_csv(path, dtype=str).fillna("")
     return frame.to_dict(orient="records")
 
@@ -97,7 +104,10 @@ def _summary_from_csv(output_dir: Path) -> dict[str, Any]:
 
 
 def _scan_runs() -> list[dict[str, Any]]:
-    OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    try:
+        OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return []
     runs: list[dict[str, Any]] = []
     known = {job.output_dir: job for job in jobs.values()}
     for path in sorted(OUTPUT_ROOT.iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
@@ -146,6 +156,9 @@ async def _execute_job(job_id: str, config: CrawlConfig) -> None:
 
     token = progress_callback.set(on_progress)
     try:
+        from app.exporters.summary import summary_rows
+        from app.main import run_inventory
+
         result, _paths = await run_inventory(config)
         job.summary = {
             "unique_phones": len(result.unique_phones),
@@ -173,7 +186,7 @@ async def home(request: Request) -> HTMLResponse:
     return TEMPLATES.TemplateResponse(
         request,
         "index.html",
-        {"runs": _scan_runs()},
+        _page_vars(runs=_scan_runs()),
     )
 
 
@@ -189,6 +202,7 @@ async def run_page(request: Request, run_id: str) -> HTMLResponse:
         {
             "run_id": run_id,
             "output_name": output_dir.name,
+            "hosted_preview": HOSTED_PREVIEW,
         },
     )
 
@@ -205,6 +219,14 @@ async def api_runs() -> dict[str, Any]:
 
 @app.post("/api/crawls")
 async def start_crawl(payload: CrawlRequest) -> dict[str, Any]:
+    if HOSTED_PREVIEW:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Crawls cannot run on the Vercel preview (serverless time limits). "
+                "Run locally with: python -m app.web"
+            ),
+        )
     output = Path(payload.output_dir) if payload.output_dir else default_output_dir(payload.start_url)
     output = _safe_output(output) if payload.output_dir else output
     output.mkdir(parents=True, exist_ok=True)

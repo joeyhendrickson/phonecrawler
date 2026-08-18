@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -111,3 +113,14 @@ class CrawlConfig(BaseModel):
         if value < 0:
             raise ValueError("must be >= 0")
         return value
+
+
+def default_output_dir(start_url: str) -> Path:
+    raw = start_url.strip()
+    if raw.startswith("//"):
+        raw = "https:" + raw
+    elif not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw
+    host = urlparse(raw).hostname or "site"
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Path("output") / f"{host}_{stamp}"
