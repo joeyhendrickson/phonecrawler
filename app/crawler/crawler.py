@@ -131,6 +131,7 @@ class PhoneCrawler:
                     self.scope,
                     extra_sitemap_urls=self.robots.sitemaps,
                     strip_query_params=self.config.strip_query_params,
+                    max_urls=self.config.max_sitemap_urls,
                 )
                 self.sitemaps = records
                 self.sitemap_urls = sitemap_urls

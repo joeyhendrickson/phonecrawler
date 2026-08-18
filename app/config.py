@@ -90,6 +90,7 @@ class CrawlConfig(BaseModel):
     classify_ai: bool = False
     retries: int = 3
     resume: bool = False
+    max_sitemap_urls: int = 100_000
 
     @field_validator("output_dir", mode="before")
     @classmethod

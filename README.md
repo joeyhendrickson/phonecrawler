@@ -77,7 +77,7 @@ python -m app.web
 
 The UI can start a crawl, stream tagged progress, and browse unique numbers, occurrences, coverage, and errors. Exports remain CSV/Excel in `output/`.
 
-Production dashboard: `https://phonecrawler.vercel.app`. Hosted crawls cap at 100 pages, skip Playwright, and finish inside the function time limit. For a full-site crawl with JavaScript rendering, run locally:
+Production dashboard: `https://phonecrawler.vercel.app`. Hosted crawls cap at 40 pages, skip Playwright, and finish inside the function time limit. For a full-site crawl with JavaScript rendering, run locally:
 
 ```bash
 python -m app.web

@@ -10,6 +10,7 @@ from app.config import DEFAULT_EXCLUDE_PATTERNS, DEFAULT_STRIP_QUERY_PARAMS
 
 _SCHEME_RE = re.compile(r"^https?://", re.I)
 _MULTI_SLASH = re.compile(r"/{2,}")
+_TLD = tldextract.TLDExtract(cache_dir="/tmp/tldextract")
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ def parse_scope(start_url: str, *, allow_subdomains: bool = False) -> DomainScop
     hostname = (parsed.hostname or "").lower().rstrip(".")
     if not hostname:
         raise ValueError(f"Could not determine hostname from {start_url!r}")
-    extracted = tldextract.extract(hostname)
+    extracted = _TLD(hostname)
     registrable = ".".join(p for p in (extracted.domain, extracted.suffix) if p)
     scheme = parsed.scheme.lower() or "https"
     port = parsed.port

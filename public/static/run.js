@@ -138,8 +138,13 @@ async function refresh() {
   let job = storedJob();
   const response = await fetch(`/api/crawls/${runId}`);
   if (response.ok) {
-    job = await response.json();
-    sessionStorage.setItem(`crawl:${runId}`, JSON.stringify(job));
+    const text = await response.text();
+    try {
+      job = JSON.parse(text);
+      sessionStorage.setItem(`crawl:${runId}`, JSON.stringify(job));
+    } catch {
+      /* keep stored job if the API returned a non-JSON error page */
+    }
   }
   if (!job) return;
   applyTables(job.tables);
@@ -167,7 +172,14 @@ document.getElementById("tabs").addEventListener("click", async (event) => {
   });
   if (activeTab === "logs") {
     const response = await fetch(`/api/crawls/${runId}`);
-    const job = await response.json();
+    const text = await response.text();
+    let job = storedJob() || {};
+    try {
+      job = JSON.parse(text);
+    } catch {
+      renderLogs(job.logs);
+      return;
+    }
     renderLogs(job.logs);
   } else {
     await loadTab(activeTab, true);

@@ -1,3 +1,16 @@
+async function readJson(response) {
+  const text = await response.text();
+  if (!text) {
+    throw new Error(`Empty response (${response.status})`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    throw new Error(snippet || `Request failed (${response.status})`);
+  }
+}
+
 async function startCrawl(event) {
   event.preventDefault();
   const form = event.target;
@@ -28,7 +41,7 @@ async function startCrawl(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const body = await response.json();
+    const body = await readJson(response);
     if (!response.ok) {
       error.textContent = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
       error.classList.remove("hidden");

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import json
 import os
 from datetime import datetime, timezone
@@ -20,10 +21,11 @@ ROOT = Path(__file__).resolve().parent
 OUTPUT_ROOT = output_root()
 TEMPLATES = Jinja2Templates(directory=str(ROOT / "templates"))
 ON_VERCEL = bool(os.getenv("VERCEL"))
-HOSTED_MAX_PAGES = 100
-HOSTED_MAX_PDFS = 40
-HOSTED_MAX_DEPTH = 6
+HOSTED_MAX_PAGES = 40
+HOSTED_MAX_PDFS = 20
+HOSTED_MAX_DEPTH = 4
 HOSTED_MAX_CONCURRENCY = 4
+HOSTED_MAX_SITEMAP_URLS = 250
 
 app = FastAPI(title="Phone Crawler", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
@@ -90,15 +92,17 @@ def _safe_output(path: Path) -> Path:
     return resolved
 
 
-def _read_csv(path: Path) -> list[dict[str, Any]]:
+def _read_csv(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    try:
-        import pandas as pd
-    except ImportError:
-        return []
-    frame = pd.read_csv(path, dtype=str).fillna("")
-    return frame.to_dict(orient="records")
+    rows: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8", errors="replace") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            rows.append({key: (value if value is not None else "") for key, value in row.items()})
+            if limit is not None and len(rows) >= limit:
+                break
+    return rows
 
 
 def _summary_from_csv(output_dir: Path) -> dict[str, Any]:
@@ -173,9 +177,9 @@ async def _execute_job(job_id: str, config: CrawlConfig) -> None:
         }
         job.summary.update({row["metric"]: row["value"] for row in summary_rows(result)})
         job.status = "complete"
-        snapshot = _job_snapshot(job)
+        snapshot = _job_snapshot(job, compact=True)
         (config.output_dir / "job.json").write_text(
-            json.dumps(snapshot, indent=2), encoding="utf-8"
+            json.dumps(snapshot, indent=2, default=str), encoding="utf-8"
         )
     except Exception as exc:  # noqa: BLE001
         job.status = "error"
@@ -222,19 +226,19 @@ async def api_runs() -> dict[str, Any]:
     return {"runs": _scan_runs()}
 
 
-def _job_tables(output_dir: Path) -> dict[str, list[dict[str, Any]]]:
+def _job_tables(output_dir: Path, *, compact: bool = False) -> dict[str, list[dict[str, Any]]]:
     return {
-        "inventory": _read_csv(output_dir / "phone_inventory.csv"),
-        "occurrences": _read_csv(output_dir / "phone_occurrences.csv")[:5000],
-        "coverage": _read_csv(output_dir / "url_inventory.csv")[:8000],
-        "errors": _read_csv(output_dir / "crawl_errors.csv"),
+        "inventory": _read_csv(output_dir / "phone_inventory.csv", 400 if compact else None),
+        "occurrences": _read_csv(output_dir / "phone_occurrences.csv", 300 if compact else 5000),
+        "coverage": _read_csv(output_dir / "url_inventory.csv", 150 if compact else 800),
+        "errors": _read_csv(output_dir / "crawl_errors.csv", 100 if compact else None),
     }
 
 
-def _job_snapshot(job: Job) -> dict[str, Any]:
+def _job_snapshot(job: Job, *, compact: bool = False) -> dict[str, Any]:
     payload = _job_to_status(job)
-    payload["tables"] = _job_tables(Path(job.output_dir))
-    payload["logs"] = payload["logs"][-200:]
+    payload["tables"] = _job_tables(Path(job.output_dir), compact=compact)
+    payload["logs"] = payload["logs"][-120:]
     return payload
 
 
@@ -275,6 +279,7 @@ def _config_from_payload(payload: CrawlRequest, output: Path) -> tuple[CrawlConf
         discover_sitemaps=payload.discover_sitemaps,
         resume=payload.resume,
         exclude_url_patterns=list(DEFAULT_EXCLUDE_PATTERNS),
+        max_sitemap_urls=HOSTED_MAX_SITEMAP_URLS if ON_VERCEL else 100_000,
     ), notes
 
 
@@ -300,8 +305,11 @@ async def start_crawl(payload: CrawlRequest) -> dict[str, Any]:
         )
         jobs[job_id] = job
     if ON_VERCEL:
-        await _execute_job(job_id, config)
-        return {"id": job_id, "output_dir": str(output), **_job_snapshot(jobs[job_id])}
+        try:
+            await _execute_job(job_id, config)
+            return {"id": job_id, "output_dir": str(output), **_job_snapshot(jobs[job_id], compact=True)}
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"Crawl failed: {exc}") from exc
     asyncio.create_task(_execute_job(job_id, config))
     return {"id": job_id, "output_dir": str(output)}
 
@@ -311,7 +319,7 @@ async def crawl_status(run_id: str) -> dict[str, Any]:
     if run_id in jobs:
         job = jobs[run_id]
         if job.status == "complete":
-            return _job_snapshot(job)
+            return _job_snapshot(job, compact=True)
         payload = _job_to_status(job)
         payload["logs"] = payload["logs"][-200:]
         return payload

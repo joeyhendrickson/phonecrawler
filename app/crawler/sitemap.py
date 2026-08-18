@@ -87,6 +87,7 @@ async def discover_sitemaps(
     *,
     extra_sitemap_urls: list[str] | None = None,
     strip_query_params: list[str] | None = None,
+    max_urls: int = MAX_SITEMAP_URLS,
 ) -> tuple[list[SitemapRecord], list[SitemapUrl]]:
     origin = scope.origin
     seeds = [
@@ -102,7 +103,7 @@ async def discover_sitemaps(
     queue: list[tuple[str, str, int]] = [(url, "seed", 0) for url in seeds]
     # source label, depth
 
-    while queue and len(collected) < MAX_SITEMAP_URLS:
+    while queue and len(collected) < max_urls:
         sitemap_url, source, depth = queue.pop(0)
         normalized = normalize_url(sitemap_url, strip_query_params=strip_query_params) or sitemap_url
         if normalized in seen_sitemaps:
@@ -145,6 +146,9 @@ async def discover_sitemaps(
                 SitemapUrl(url=abs_url, lastmod=item.lastmod, sitemap_source=normalized)
             )
         collected.extend(in_scope)
+        if len(collected) > max_urls:
+            collected = collected[:max_urls]
+            break
         records.append(
             SitemapRecord(
                 sitemap_url=normalized,
