@@ -2,6 +2,7 @@ async function startCrawl(event) {
   event.preventDefault();
   const form = event.target;
   const error = document.getElementById("form-error");
+  const button = form.querySelector("button[type=submit]");
   error.classList.add("hidden");
   const data = Object.fromEntries(new FormData(form).entries());
   const payload = {
@@ -18,18 +19,30 @@ async function startCrawl(event) {
     discover_sitemaps: Boolean(data.discover_sitemaps),
     allow_subdomains: Boolean(data.allow_subdomains),
   };
-  const response = await fetch("/api/crawls", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const body = await response.json();
-  if (!response.ok) {
-    error.textContent = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Crawling…";
+  try {
+    const response = await fetch("/api/crawls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      error.textContent = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      error.classList.remove("hidden");
+      return;
+    }
+    sessionStorage.setItem(`crawl:${body.id}`, JSON.stringify(body));
+    window.location.href = `/runs/${body.id}`;
+  } catch (err) {
+    error.textContent = err instanceof Error ? err.message : "Crawl failed.";
     error.classList.remove("hidden");
-    return;
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
   }
-  window.location.href = `/runs/${body.id}`;
 }
 
 const form = document.getElementById("crawl-form");

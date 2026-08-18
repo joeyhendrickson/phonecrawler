@@ -26,9 +26,17 @@ def test_start_url_is_required():
     assert response.status_code == 422
 
 
-def test_hosted_preview_rejects_crawls(monkeypatch):
+def test_vercel_production_allows_crawls(monkeypatch):
     import app.web.server as web
 
-    monkeypatch.setattr(web, "HOSTED_PREVIEW", True)
-    response = client.post("/api/crawls", json={"start_url": "https://www.example.edu"})
-    assert response.status_code == 501
+    async def fake_execute(job_id: str, config) -> None:
+        web.jobs[job_id].status = "complete"
+        web.jobs[job_id].summary = {"Unique phone numbers": "0"}
+
+    monkeypatch.setattr(web, "ON_VERCEL", True)
+    monkeypatch.setattr(web, "_execute_job", fake_execute)
+    response = client.post("/api/crawls", json={"start_url": "https://www.example.edu", "max_pages": 500})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"]
+    assert body["status"] == "complete"

@@ -1,13 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Phone Crawler{% endblock %}
 {% block content %}
-    {% if hosted_preview %}
-    <div class="mb-6 rounded-2xl border border-rust/40 bg-rust-faint px-4 py-3 text-sm text-ink">
-      Hosted preview is live, but crawls need a local process (Vercel functions time out).
-      Run <code class="rounded bg-paper px-1.5 py-0.5 font-mono text-xs">python -m app.web</code>
-      then open <code class="rounded bg-paper px-1.5 py-0.5 font-mono text-xs">http://127.0.0.1:8000</code>.
-    </div>
-    {% endif %}
     <section class="mb-8 max-w-3xl">
   <p class="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-tide">Deterministic public crawl</p>
   <h1 class="font-display text-4xl leading-tight text-ink md:text-5xl">Inventory every publicly published phone number.</h1>

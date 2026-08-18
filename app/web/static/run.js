@@ -76,15 +76,35 @@ function renderTable(rows) {
     </table>`;
 }
 
+function storedJob() {
+  try {
+    return JSON.parse(sessionStorage.getItem(`crawl:${runId}`) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function applyTables(tables) {
+  if (!tables) return;
+  cache.inventory = tables.inventory || cache.inventory;
+  cache.occurrences = tables.occurrences || cache.occurrences;
+  cache.coverage = tables.coverage || cache.coverage;
+  cache.errors = tables.errors || cache.errors;
+}
+
 async function loadTab(name, force = false) {
   if (name === "logs") return;
   if (!force && cache[name]) {
     renderTable(cache[name]);
     return;
   }
+  if (cache[name] && cache[name].length) {
+    renderTable(cache[name]);
+    if (!force) return;
+  }
   const response = await fetch(`/api/crawls/${runId}/${name}`);
   if (!response.ok) {
-    renderTable([]);
+    renderTable(cache[name] || []);
     return;
   }
   const data = await response.json();
@@ -115,9 +135,14 @@ function renderDownloads() {
 }
 
 async function refresh() {
+  let job = storedJob();
   const response = await fetch(`/api/crawls/${runId}`);
-  if (!response.ok) return;
-  const job = await response.json();
+  if (response.ok) {
+    job = await response.json();
+    sessionStorage.setItem(`crawl:${runId}`, JSON.stringify(job));
+  }
+  if (!job) return;
+  applyTables(job.tables);
   document.getElementById("run-title").textContent = job.start_url || runId;
   document.getElementById("run-status").className = `mt-1 font-mono text-sm ${statusClass(job.status)}`;
   document.getElementById("run-status").textContent = `${job.status} · ${job.output_dir || ""}`;

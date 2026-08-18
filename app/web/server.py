@@ -13,13 +13,17 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
-from app.config import DEFAULT_EXCLUDE_PATTERNS, CrawlConfig, default_output_dir
+from app.config import DEFAULT_EXCLUDE_PATTERNS, CrawlConfig, default_output_dir, output_root
 from app.utils.logging import progress_callback
 
 ROOT = Path(__file__).resolve().parent
-OUTPUT_ROOT = Path("output")
+OUTPUT_ROOT = output_root()
 TEMPLATES = Jinja2Templates(directory=str(ROOT / "templates"))
-HOSTED_PREVIEW = bool(os.getenv("VERCEL"))
+ON_VERCEL = bool(os.getenv("VERCEL"))
+HOSTED_MAX_PAGES = 100
+HOSTED_MAX_PDFS = 40
+HOSTED_MAX_DEPTH = 6
+HOSTED_MAX_CONCURRENCY = 4
 
 app = FastAPI(title="Phone Crawler", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
@@ -67,7 +71,7 @@ _jobs_lock = asyncio.Lock()
 
 
 def _page_vars(**kwargs: Any) -> dict[str, Any]:
-    return {"hosted_preview": HOSTED_PREVIEW, **kwargs}
+    return {"on_vercel": ON_VERCEL, **kwargs}
 
 
 def _utc_now() -> str:
@@ -169,8 +173,9 @@ async def _execute_job(job_id: str, config: CrawlConfig) -> None:
         }
         job.summary.update({row["metric"]: row["value"] for row in summary_rows(result)})
         job.status = "complete"
+        snapshot = _job_snapshot(job)
         (config.output_dir / "job.json").write_text(
-            json.dumps(_job_to_status(job), indent=2), encoding="utf-8"
+            json.dumps(snapshot, indent=2), encoding="utf-8"
         )
     except Exception as exc:  # noqa: BLE001
         job.status = "error"
@@ -194,7 +199,7 @@ async def home(request: Request) -> HTMLResponse:
 async def run_page(request: Request, run_id: str) -> HTMLResponse:
     live = jobs.get(run_id)
     output_dir = Path(live.output_dir) if live else OUTPUT_ROOT / run_id
-    if not output_dir.exists() and live is None:
+    if not output_dir.exists() and live is None and not ON_VERCEL:
         raise HTTPException(status_code=404, detail="Run not found")
     return TEMPLATES.TemplateResponse(
         request,
@@ -202,7 +207,7 @@ async def run_page(request: Request, run_id: str) -> HTMLResponse:
         {
             "run_id": run_id,
             "output_name": output_dir.name,
-            "hosted_preview": HOSTED_PREVIEW,
+            "on_vercel": ON_VERCEL,
         },
     )
 
@@ -217,36 +222,68 @@ async def api_runs() -> dict[str, Any]:
     return {"runs": _scan_runs()}
 
 
-@app.post("/api/crawls")
-async def start_crawl(payload: CrawlRequest) -> dict[str, Any]:
-    if HOSTED_PREVIEW:
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                "Crawls cannot run on the Vercel preview (serverless time limits). "
-                "Run locally with: python -m app.web"
-            ),
+def _job_tables(output_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    return {
+        "inventory": _read_csv(output_dir / "phone_inventory.csv"),
+        "occurrences": _read_csv(output_dir / "phone_occurrences.csv")[:5000],
+        "coverage": _read_csv(output_dir / "url_inventory.csv")[:8000],
+        "errors": _read_csv(output_dir / "crawl_errors.csv"),
+    }
+
+
+def _job_snapshot(job: Job) -> dict[str, Any]:
+    payload = _job_to_status(job)
+    payload["tables"] = _job_tables(Path(job.output_dir))
+    payload["logs"] = payload["logs"][-200:]
+    return payload
+
+
+def _config_from_payload(payload: CrawlRequest, output: Path) -> tuple[CrawlConfig, list[str]]:
+    max_pages = payload.max_pages
+    max_depth = payload.max_depth
+    concurrency = payload.concurrency
+    delay = payload.delay
+    timeout = payload.timeout
+    render_js = payload.render_js
+    max_pdfs = 5_000
+    notes: list[str] = []
+    if ON_VERCEL:
+        max_pages = min(max_pages, HOSTED_MAX_PAGES)
+        max_depth = min(max_depth, HOSTED_MAX_DEPTH)
+        concurrency = min(concurrency, HOSTED_MAX_CONCURRENCY)
+        delay = max(delay, 0.25)
+        timeout = min(timeout, 12.0)
+        render_js = "off"
+        max_pdfs = HOSTED_MAX_PDFS
+        notes.append(
+            f"Production crawl capped at {max_pages} pages, JS rendering off, {max_pdfs} PDFs."
         )
-    output = Path(payload.output_dir) if payload.output_dir else default_output_dir(payload.start_url)
-    output = _safe_output(output) if payload.output_dir else output
-    output.mkdir(parents=True, exist_ok=True)
-    config = CrawlConfig(
+    return CrawlConfig(
         start_url=payload.start_url,
         output_dir=output,
         country=payload.country,
-        max_pages=payload.max_pages,
-        max_depth=payload.max_depth,
-        concurrency=payload.concurrency,
-        delay=payload.delay,
-        timeout=payload.timeout,
-        render_js=payload.render_js,
+        max_pages=max_pages,
+        max_pdfs=max_pdfs,
+        max_depth=max_depth,
+        concurrency=concurrency,
+        delay=delay,
+        timeout=timeout,
+        render_js=render_js,
         include_pdfs=payload.include_pdfs,
         respect_robots=payload.respect_robots,
         allow_subdomains=payload.allow_subdomains,
         discover_sitemaps=payload.discover_sitemaps,
         resume=payload.resume,
         exclude_url_patterns=list(DEFAULT_EXCLUDE_PATTERNS),
-    )
+    ), notes
+
+
+@app.post("/api/crawls")
+async def start_crawl(payload: CrawlRequest) -> dict[str, Any]:
+    output = Path(payload.output_dir) if payload.output_dir else default_output_dir(payload.start_url)
+    output = _safe_output(output) if payload.output_dir else output
+    output.mkdir(parents=True, exist_ok=True)
+    config, notes = _config_from_payload(payload, output)
     job_id = output.name
     async with _jobs_lock:
         if any(job.status == "running" for job in jobs.values()):
@@ -259,9 +296,12 @@ async def start_crawl(payload: CrawlRequest) -> dict[str, Any]:
             start_url=payload.start_url,
             output_dir=str(output),
             status="queued",
-            logs=[f"[QUEUE] Starting {payload.start_url}"],
+            logs=[f"[QUEUE] Starting {payload.start_url}", *[f"[QUEUE] {note}" for note in notes]],
         )
         jobs[job_id] = job
+    if ON_VERCEL:
+        await _execute_job(job_id, config)
+        return {"id": job_id, "output_dir": str(output), **_job_snapshot(jobs[job_id])}
     asyncio.create_task(_execute_job(job_id, config))
     return {"id": job_id, "output_dir": str(output)}
 
@@ -269,10 +309,16 @@ async def start_crawl(payload: CrawlRequest) -> dict[str, Any]:
 @app.get("/api/crawls/{run_id}")
 async def crawl_status(run_id: str) -> dict[str, Any]:
     if run_id in jobs:
-        payload = _job_to_status(jobs[run_id])
+        job = jobs[run_id]
+        if job.status == "complete":
+            return _job_snapshot(job)
+        payload = _job_to_status(job)
         payload["logs"] = payload["logs"][-200:]
         return payload
     output_dir = OUTPUT_ROOT / run_id
+    snapshot_path = output_dir / "job.json"
+    if snapshot_path.exists():
+        return json.loads(snapshot_path.read_text(encoding="utf-8"))
     if not output_dir.exists():
         raise HTTPException(status_code=404, detail="Run not found")
     summary = _summary_from_csv(output_dir)

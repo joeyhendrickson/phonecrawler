@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -115,6 +116,12 @@ class CrawlConfig(BaseModel):
         return value
 
 
+def output_root() -> Path:
+    if os.getenv("VERCEL"):
+        return Path("/tmp/phone-crawler-output")
+    return Path("output")
+
+
 def default_output_dir(start_url: str) -> Path:
     raw = start_url.strip()
     if raw.startswith("//"):
@@ -123,4 +130,4 @@ def default_output_dir(start_url: str) -> Path:
         raw = "https://" + raw
     host = urlparse(raw).hostname or "site"
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path("output") / f"{host}_{stamp}"
+    return output_root() / f"{host}_{stamp}"
