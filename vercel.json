@@ -1,14 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "pip install -r requirements-vercel.txt",
-  "functions": {
-    "server.py": {
-      "maxDuration": 30,
-      "excludeFiles": "{tests/**,.venv/**,output/**,**/*.pdf}"
-    },
-    "api/index.py": {
-      "maxDuration": 30,
-      "excludeFiles": "{tests/**,.venv/**,output/**,**/*.pdf}"
-    }
-  }
+  "framework": "fastapi",
+  "installCommand": "pip install -r requirements-vercel.txt"
 }

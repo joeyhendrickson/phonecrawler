@@ -8,13 +8,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.config import DEFAULT_EXCLUDE_PATTERNS, CrawlConfig, default_output_dir
-from app.crawler.crawler import PhoneCrawler
-from app.exporters.csv_exporter import export_csvs
-from app.exporters.excel_exporter import export_excel
-from app.exporters.report_exporter import export_report
-from app.processing.classification import classify_inventory, classify_with_ai
-from app.processing.coverage import attach_coverage
-from app.processing.deduplication import build_unique_inventory
 from app.utils.logging import announce, get_logger, setup_logging
 
 load_dotenv()
@@ -130,7 +123,14 @@ def config_from_args(args: argparse.Namespace) -> CrawlConfig:
 
 
 async def run_inventory(config: CrawlConfig):
+    from app.crawler.crawler import PhoneCrawler
+    from app.exporters.csv_exporter import export_csvs
+    from app.exporters.excel_exporter import export_excel
+    from app.exporters.report_exporter import export_report
     from app.models.records import CrawlResult
+    from app.processing.classification import classify_inventory, classify_with_ai
+    from app.processing.coverage import attach_coverage
+    from app.processing.deduplication import build_unique_inventory
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
     setup_logging(debug=config.debug, log_file=config.output_dir / "crawl.log")
@@ -193,6 +193,10 @@ def cli(argv: list[str] | None = None) -> int:
 def main() -> None:
     sys.exit(cli())
 
+
+# Vercel’s FastAPI preset looks for `app` in app/main.py. Keep crawler imports
+# inside run_inventory so this module can load without Playwright/PyMuPDF.
+from app.web.server import app as app
 
 if __name__ == "__main__":
     main()
